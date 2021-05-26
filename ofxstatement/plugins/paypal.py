@@ -45,7 +45,7 @@ def atof(string, loc=None):
 
 class PayPalStatementParser(StatementParser):
     bank_id = 'PayPal'
-    date_format = '%Y/%m/%d'
+    date_format = '%d/%m/%Y'
     valid_header = [
         u"Date",
         u"Time",
@@ -60,35 +60,17 @@ class PayPalStatementParser(StatementParser):
         u"From Email Address",
         u"To Email Address",
         u"Transaction ID",
-        u"Counterparty Status",
-        u"Address Status",
+        u"Shipping Address",
         u"Item Title",
         u"Item ID",
         u"Shipping and Handling Amount",
-        u"Insurance Amount",
-        u"Sales Tax",
-        u"Option 1 Name",
-        u"Option 1 Value",
-        u"Option 2 Name",
-        u"Option 2 Value",
-        u"Auction Site",
-        u"Buyer ID",
-        u"Item URL",
-        u"Closing Date",
-        u"Escrow Id",
-        u"Invoice Id",
         u"Reference Txn ID",
-        u"Invoice Number",
-        u"Custom Number",
         u"Receipt ID",
         u"Balance",
-        u"Address Line 1",
-        u"Address Line 2/District/Neighborhood",
-        u"Town/City",
-        u"State/Province/Region/County/Territory/Prefecture/Republic",
-        u"Zip/Postal Code",
-        u"Country",
         u"Contact Phone Number",
+        u"Subject",
+        u"Note",
+        u"Balance Impact",
         u"",
     ]
 
@@ -102,7 +84,7 @@ class PayPalStatementParser(StatementParser):
         with open(fin, 'r', encoding=self.encoding) as f:
             self.lines = f.readlines()
 
-        self.validate()
+        #self.validate()
         self.statement = Statement(
             bank_id=self.bank_id,
             account_id=self.account_id,
@@ -121,7 +103,8 @@ class PayPalStatementParser(StatementParser):
     def rows(self):
         rs = drop(self.reader, 1)
         currency_idx = self.valid_header.index("Currency")
-        return [r for r in rs if r[currency_idx] == self.currency]
+        type_idx = self.valid_header.index("Type")
+        return [r for r in rs if r[currency_idx] == self.currency and r[type_idx] != "Bank Deposit to PP Account"]
 
     def validate(self):
         """
@@ -146,30 +129,29 @@ class PayPalStatementParser(StatementParser):
 
         id_idx = self.valid_header.index("Transaction ID")
         date_idx = self.valid_header.index("Date")
-        memo_idx = self.valid_header.index("Name")
+        name_idx = self.valid_header.index("Name")
         refnum_idx = self.valid_header.index("Reference Txn ID")
         amount_idx = self.valid_header.index("Gross")
         payee_idx = self.valid_header.index("To Email Address")
         title_idx = self.valid_header.index("Item Title")
+        subject_idx = self.valid_header.index("Subject")
+        note_idx = self.valid_header.index("Note")
+
+        memo = ''
+        if row[note_idx] is not None:
+            memo = row[note_idx]
+        if row[subject_idx] is not None:
+            memo = row[subject_idx]
+        if row[title_idx] is not None: 
+            memo = row[title_idx] 
 
         stmt_line = StatementLine()
         stmt_line.id = row[id_idx]
         stmt_line.date = datetime.strptime(row[date_idx], self.date_format)
-        stmt_line.memo = row[memo_idx]
-
-        if self.analyze:
-            memo_parts = [
-                row[memo_idx]
-            ]
-
-            payee = row[payee_idx]
-            if payee and (payee.lower() == 'steamgameseu@steampowered.com'):
-                memo_parts.append(row[title_idx])
-
-            stmt_line.memo = ' / '.join(filter(bool, memo_parts))
-
+        stmt_line.memo = memo 
+        stmt_line.payee = f'Name: {row[name_idx]} Email: {row[payee_idx]}'
         stmt_line.refnum = row[refnum_idx]
-        stmt_line.amount = atof(row[amount_idx].replace(" ", ""), self.locale)
+        stmt_line.amount = atof(row[amount_idx].replace(" ", "").replace(".","").replace(",","."), self.locale)
 
         return stmt_line
 
